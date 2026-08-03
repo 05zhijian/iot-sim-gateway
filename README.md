@@ -26,6 +26,8 @@
                           └────────────────┘
 ```
 
+![Dashboard](dashboard/screenshot.png)
+
 ## 快速开始
 
 ```bash
