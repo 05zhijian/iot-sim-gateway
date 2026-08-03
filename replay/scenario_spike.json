@@ -1,0 +1,27 @@
+{
+  "scenario": "spike",
+  "description": "传感器 sensor-03 出现毛刺跳变：间隔正常数据中夹杂 3 次瞬时异常尖峰 (38°C / -5°C / 42°C)",
+  "data": [
+    {"device_id":"sensor-03","timestamp":0,"temperature":24.0,"humidity":50,"state":"NORMAL"},
+    {"device_id":"sensor-03","timestamp":1,"temperature":24.1,"humidity":51,"state":"NORMAL"},
+    {"device_id":"sensor-03","timestamp":2,"temperature":23.9,"humidity":50,"state":"NORMAL"},
+    {"device_id":"sensor-03","timestamp":3,"temperature":24.0,"humidity":49,"state":"NORMAL"},
+    {"device_id":"sensor-03","timestamp":4,"temperature":24.2,"humidity":50,"state":"NORMAL"},
+    {"device_id":"sensor-03","timestamp":5,"temperature":38.0,"humidity":50,"state":"SPIKE"},
+    {"device_id":"sensor-03","timestamp":6,"temperature":24.0,"humidity":51,"state":"NORMAL"},
+    {"device_id":"sensor-03","timestamp":7,"temperature":23.8,"humidity":50,"state":"NORMAL"},
+    {"device_id":"sensor-03","timestamp":8,"temperature":24.1,"humidity":49,"state":"NORMAL"},
+    {"device_id":"sensor-03","timestamp":9,"temperature":24.0,"humidity":50,"state":"NORMAL"},
+    {"device_id":"sensor-03","timestamp":10,"temperature":23.9,"humidity":51,"state":"NORMAL"},
+    {"device_id":"sensor-03","timestamp":11,"temperature":24.2,"humidity":50,"state":"NORMAL"},
+    {"device_id":"sensor-03","timestamp":12,"temperature":-5.0,"humidity":49,"state":"SPIKE"},
+    {"device_id":"sensor-03","timestamp":13,"temperature":24.1,"humidity":50,"state":"NORMAL"},
+    {"device_id":"sensor-03","timestamp":14,"temperature":23.9,"humidity":51,"state":"NORMAL"},
+    {"device_id":"sensor-03","timestamp":15,"temperature":24.0,"humidity":50,"state":"NORMAL"},
+    {"device_id":"sensor-03","timestamp":16,"temperature":24.2,"humidity":49,"state":"NORMAL"},
+    {"device_id":"sensor-03","timestamp":17,"temperature":23.8,"humidity":50,"state":"NORMAL"},
+    {"device_id":"sensor-03","timestamp":18,"temperature":42.0,"humidity":51,"state":"SPIKE"},
+    {"device_id":"sensor-03","timestamp":19,"temperature":24.0,"humidity":50,"state":"NORMAL"},
+    {"device_id":"sensor-03","timestamp":20,"temperature":24.1,"humidity":49,"state":"NORMAL"}
+  ]
+}

@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IoT Sim Gateway — Dashboard</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+.header{background:#1e293b;padding:16px 24px;border-bottom:1px solid #334155;display:flex;justify-content:space-between;align-items:center}
+.header h1{font-size:1.2rem;color:#f1f5f9}
+.header .status{display:flex;gap:16px}
+.stat-card{background:#1e293b;border-radius:8px;padding:12px 20px;text-align:center;min-width:80px}
+.stat-card .num{font-size:1.5rem;font-weight:700}
+.stat-card .label{font-size:0.7rem;color:#94a3b8;margin-top:2px}
+.stat-card.online .num{color:#22c55e}
+.stat-card.alerts .num{color:#ef4444}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;padding:24px}
+.device-card{background:#1e293b;border-radius:10px;padding:16px;border-left:4px solid #334155}
+.device-card.ok{border-left-color:#22c55e}
+.device-card.warn{border-left-color:#eab308}
+.device-card.bad{border-left-color:#ef4444}
+.device-card.off{border-left-color:#64748b}
+.device-card .name{font-weight:600;margin-bottom:8px}
+.device-card .readings{display:flex;gap:24px;margin:12px 0}
+.reading{text-align:center}
+.reading .val{font-size:1.8rem;font-weight:700}
+.reading .unit{font-size:0.75rem;color:#94a3b8}
+.reading.temp .val{color:#f97316}
+.reading.hum .val{color:#3b82f6}
+.state-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.7rem;font-weight:600}
+.state-NORMAL{background:#166534;color:#22c55e}
+.state-DRIFT{background:#713f12;color:#eab308}
+.state-STUCK{background:#7f1d1d;color:#fca5a5}
+.state-SPIKE{background:#581c87;color:#c084fc}
+.state-DROPOUT{background:#1e293b;color:#64748b}
+.alerts-panel{background:#1e293b;border-radius:10px;margin:0 24px 24px;padding:16px}
+.alerts-panel h2{font-size:1rem;margin-bottom:12px;color:#94a3b8}
+.alert-row{padding:8px 0;border-bottom:1px solid #1e293b;font-size:0.85rem;display:flex;gap:8px;align-items:center}
+.alert-row .time{color:#64748b;min-width:70px}
+.alert-row .sev{font-weight:600;min-width:60px}
+.alert-row.sev-critical .sev{color:#ef4444}
+.alert-row.sev-warning .sev{color:#eab308}
+.alert-row.sev-info .sev{color:#3b82f6}
+.footer{text-align:center;padding:16px;color:#475569;font-size:0.75rem}
+#connection-status{font-size:0.75rem;padding:4px 10px;border-radius:4px}
+#connection-status.live{background:#166534;color:#22c55e}
+#connection-status.dead{background:#7f1d1d;color:#fca5a5}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>📡 IoT Sim Gateway</h1>
+  <div class="status">
+    <span id="connection-status" class="dead">● 等待连接</span>
+    <div class="stat-card online"><div class="num" id="online-count">0</div><div class="label">在线</div></div>
+    <div class="stat-card"><div class="num" id="total-count">0</div><div class="label">设备总数</div></div>
+    <div class="stat-card alerts"><div class="num" id="alert-count">0</div><div class="label">告警</div></div>
+  </div>
+</div>
+
+<div class="grid" id="device-grid"></div>
+
+<div class="alerts-panel">
+  <h2>🚨 最近告警</h2>
+  <div id="alerts-list">等待数据…</div>
+</div>
+
+<div class="footer">SSE Bridge → MQTT | iot-sim-gateway</div>
+
+<script>
+const devices = new Map();
+const alertList = [];
+
+function connectSSE() {
+  const es = new EventSource('/events');
+
+  es.onopen = () => {
+    console.log('SSE connected');
+    document.getElementById('connection-status').textContent = '● 已连接';
+    document.getElementById('connection-status').className = 'live';
+  };
+
+  es.onmessage = (e) => {
+    try {
+      const batch = JSON.parse(e.data);
+      for (const ev of batch) {
+        handleEvent(ev.topic, ev.payload);
+      }
+    } catch (err) {
+      console.error('Parse error:', err);
+    }
+    render();
+  };
+
+  es.onerror = () => {
+    document.getElementById('connection-status').textContent = '● 断开，重连中…';
+    document.getElementById('connection-status').className = 'dead';
+    // EventSource auto-reconnects after a few seconds
+  };
+}
+
+function handleEvent(topic, data) {
+  const did = data.device_id;
+  if (!did) return;
+
+  if (topic.includes('heartbeat')) {
+    if (!devices.has(did)) {
+      devices.set(did, {id: did, temp: '--', hum: '--', state: 'ONLINE', lastSeen: Date.now()});
+    } else {
+      devices.get(did).lastSeen = Date.now();
+      devices.get(did).state = data.state || 'ONLINE';
+    }
+  } else {
+    if (!devices.has(did)) {
+      devices.set(did, {id: did, temp: data.temperature, hum: data.humidity, state: data.state || 'NORMAL', lastSeen: Date.now()});
+    } else {
+      const d = devices.get(did);
+      d.temp = data.temperature;
+      d.hum = data.humidity;
+      d.state = data.state || 'NORMAL';
+      d.lastSeen = Date.now();
+    }
+
+    // 异常 → 告警列表
+    if (data.state && data.state !== 'NORMAL') {
+      alertList.unshift({
+        time: new Date().toLocaleTimeString(),
+        device: did,
+        state: data.state,
+        temp: data.temperature,
+        severity: data.state === 'DROPOUT' ? 'critical' : 'warning'
+      });
+      if (alertList.length > 20) alertList.length = 20;
+    }
+  }
+}
+
+function render() {
+  const now = Date.now();
+  let online = 0;
+  let activeAlerts = 0;
+
+  // Device cards
+  const grid = document.getElementById('device-grid');
+  let html = '';
+  for (const [id, d] of devices) {
+    const age = now - d.lastSeen;
+    const isOnline = age < 15000;
+    if (isOnline) online++;
+
+    let cardClass = 'ok';
+    if (!isOnline) cardClass = 'off';
+    else if (d.state === 'STUCK' || d.state === 'DROPOUT') cardClass = 'bad';
+    else if (d.state !== 'NORMAL' && d.state !== 'ONLINE') cardClass = 'warn';
+
+    if (d.state !== 'NORMAL' && d.state !== 'ONLINE') activeAlerts++;
+
+    html += `<div class="device-card ${cardClass}">
+      <div class="name">📟 ${id} <span class="state-badge state-${d.state}">${d.state}</span></div>
+      <div class="readings">
+        <div class="reading temp"><div class="val">${typeof d.temp === 'number' ? d.temp.toFixed(1) : d.temp}</div><div class="unit">°C</div></div>
+        <div class="reading hum"><div class="val">${typeof d.hum === 'number' ? d.hum.toFixed(1) : d.hum}</div><div class="unit">%</div></div>
+      </div>
+      <div style="font-size:0.7rem;color:#64748b">${isOnline ? '● 在线' : '○ 离线 ' + Math.round(age/1000) + 's'}</div>
+    </div>`;
+  }
+  grid.innerHTML = html || '<div style="padding:24px;color:#64748b">等待传感器数据…</div>';
+
+  // Stats
+  document.getElementById('online-count').textContent = online;
+  document.getElementById('total-count').textContent = devices.size;
+  document.getElementById('alert-count').textContent = activeAlerts;
+
+  // Alert list
+  const alist = document.getElementById('alerts-list');
+  if (alertList.length === 0) {
+    alist.innerHTML = '<div style="color:#64748b">暂无告警</div>';
+  } else {
+    alist.innerHTML = alertList.slice(0, 10).map(a =>
+      `<div class="alert-row sev-${a.severity}">
+        <span class="time">${a.time}</span>
+        <span class="sev">${a.severity.toUpperCase()}</span>
+        <span>${a.device} — ${a.state} (${typeof a.temp === 'number' ? a.temp.toFixed(1) : a.temp}°C)</span>
+      </div>`
+    ).join('');
+  }
+}
+
+// Check offline every 5s
+setInterval(render, 5000);
+
+// Start!
+connectSSE();
+</script>
+</body>
+</html>
