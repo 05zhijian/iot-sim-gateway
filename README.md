@@ -6,6 +6,8 @@
 [![tests](https://img.shields.io/badge/tests-17%20passed-brightgreen.svg)]()
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
+📝 [为什么告警不能只是 if temp > 35](https://juejin.cn/spost/7669809799603273780) — 技术文章
+
 ---
 
 ## 架构
