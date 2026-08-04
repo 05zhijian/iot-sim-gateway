@@ -1,4 +1,4 @@
-"""仿真器开关控制器。python cli/ctrl.py [start|stop|replay|status]"""
+"""开关控制器。python cli/ctrl.py [all|start|stop|replay|status]"""
 from __future__ import annotations
 
 import argparse
@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 import time
+import webbrowser
 
 # 修复 Windows GBK 终端 emoji 编码问题
 if sys.platform == "win32":
@@ -14,8 +15,11 @@ if sys.platform == "win32":
 import yaml
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-PID_FILE = os.path.join(os.path.dirname(__file__), "..", "data", "simulator.pid")
+PID_FILE = os.path.join(BASE_DIR, "data", "simulator.pid")
+GATEWAY_PID_FILE = os.path.join(BASE_DIR, "data", "gateway.pid")
+BRIDGE_PID_FILE = os.path.join(BASE_DIR, "data", "bridge.pid")
 REPLAY_DIR = os.path.join(os.path.dirname(__file__), "..", "replay")
 
 
@@ -145,6 +149,97 @@ def cmd_status() -> None:
         os.remove(PID_FILE)
 
 
+def _start_service(name: str, pid_file: str, module: str, cwd: str | None = None) -> bool:
+    """启动后台服务，返回是否成功。"""
+    if os.path.exists(pid_file):
+        try:
+            with open(pid_file) as f:
+                pid = int(f.read().strip())
+            if _is_running(pid):
+                print(f"  ⏭  {name} 已在运行 (PID: {pid})")
+                return True
+            os.remove(pid_file)
+        except (OSError, ValueError):
+            os.remove(pid_file)
+
+    os.makedirs(os.path.dirname(pid_file), exist_ok=True)
+    creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+    proc = subprocess.Popen(
+        [sys.executable, "-m", module],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        cwd=cwd or BASE_DIR,
+        creationflags=creationflags,
+    )
+    with open(pid_file, "w") as f:
+        f.write(str(proc.pid))
+    time.sleep(2)
+    if proc.poll() is None:
+        print(f"  ✅ {name} 已启动 (PID: {proc.pid})")
+        return True
+    else:
+        print(f"  ❌ {name} 启动失败")
+        os.remove(pid_file)
+        return False
+
+
+def cmd_all() -> None:
+    """一键启动所有服务并打开 Dashboard。"""
+    print("🚀 启动 iot-sim-gateway…\n")
+
+    # 1. Gateway
+    print("[1/3] Gateway")
+    if not _start_service("Gateway", GATEWAY_PID_FILE, "gateway.main"):
+        return
+
+    # 2. Dashboard Bridge
+    print("[2/3] Dashboard")
+    bridge_cwd = os.path.join(BASE_DIR, "dashboard")
+    if not _start_service("Bridge", BRIDGE_PID_FILE, "server", cwd=bridge_cwd):
+        # server.py 不是 package module，需要特殊处理
+        # 重置，用直接执行脚本的方式
+        os.remove(BRIDGE_PID_FILE)
+        if os.path.exists(BRIDGE_PID_FILE):
+            pass
+        if not _start_bridge_fallback():
+            return
+
+    # 3. Simulator
+    print("[3/3] 仿真器")
+    cmd_start()
+
+    # 打开浏览器
+    print()
+    webbrowser.open("http://localhost:8080/index.html")
+    print("🌐 Dashboard → http://localhost:8080/index.html")
+    print("📋 python cli/ctrl.py status  # 查看状态")
+
+
+def _start_bridge_fallback() -> bool:
+    """备用方式启动 bridge（直接执行 server.py）。"""
+    pid_file = BRIDGE_PID_FILE
+    bridge_script = os.path.join(BASE_DIR, "dashboard", "server.py")
+    os.makedirs(os.path.dirname(pid_file), exist_ok=True)
+    creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+    proc = subprocess.Popen(
+        [sys.executable, bridge_script],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        cwd=os.path.join(BASE_DIR, "dashboard"),
+        creationflags=creationflags,
+    )
+    with open(pid_file, "w") as f:
+        f.write(str(proc.pid))
+    time.sleep(2)
+    if proc.poll() is None:
+        print(f"  ✅ Bridge 已启动 (PID: {proc.pid})")
+        return True
+    else:
+        print(f"  ❌ Bridge 启动失败")
+        os.remove(pid_file)
+        return False
+
+
 def _list_scenarios() -> str:
     import glob
     files = glob.glob(os.path.join(REPLAY_DIR, "scenario_*.json"))
@@ -153,19 +248,22 @@ def _list_scenarios() -> str:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="仿真器开关控制器")
+    parser = argparse.ArgumentParser(description="iot-sim-gateway 开关控制器")
     sub = parser.add_subparsers(dest="command")
 
+    sub.add_parser("all", help="一键启动所有服务 + 打开 Dashboard")
     sub.add_parser("start", help="启动仿真器（后台）")
     sub.add_parser("stop", help="停止仿真器")
-    sub.add_parser("status", help="查看仿真器状态")
+    sub.add_parser("status", help="查看服务运行状态")
 
     replay = sub.add_parser("replay", help="前台运行回放场景")
     replay.add_argument("scenario", help=f"场景名: {_list_scenarios()}")
 
     args = parser.parse_args()
 
-    if args.command == "start":
+    if args.command == "all":
+        cmd_all()
+    elif args.command == "start":
         cmd_start()
     elif args.command == "stop":
         cmd_stop()
